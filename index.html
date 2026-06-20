@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>明石名物名所AR</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app { position: relative; width: 100%; height: 100vh; overflow: hidden; }
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 28px;
+  }
+  .hidden { display: none !important; }
+
+  .spot-title { font-size: 22px; font-weight: bold; margin-bottom: 14px; }
+  .desc { font-size: 15px; line-height: 1.7; margin-bottom: 24px; opacity: 0.9; }
+  .my-code {
+    font-size: 13px; opacity: 0.75; margin-bottom: 18px;
+    background: rgba(255,255,255,0.08); padding: 8px 14px; border-radius: 20px;
+  }
+  .my-code b { color: #ffd166; letter-spacing: 2px; }
+
+  button {
+    background: #ff6b35; color: #fff; border: none;
+    padding: 16px 32px; font-size: 16px; font-weight: bold;
+    border-radius: 30px; margin-top: 10px; cursor: pointer;
+  }
+  button.secondary { background: rgba(255,255,255,0.15); }
+  button:disabled { opacity: 0.5; }
+
+  .spinner {
+    width: 40px; height: 40px; border-radius: 50%;
+    border: 4px solid rgba(255,255,255,0.25); border-top-color: #ff6b35;
+    animation: spin 0.9s linear infinite; margin-bottom: 18px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #screen-ar { padding: 0; justify-content: flex-end; }
+  #camera { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #111; }
+  #overlay-img {
+    position: absolute; bottom: 12%; left: 25%; width: 50%;
+    pointer-events: none; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
+    transition: transform 0.05s linear;
+  }
+  #watermark {
+    position: absolute; top: 16px; left: 16px;
+    background: rgba(0,0,0,0.5); padding: 7px 14px; border-radius: 10px;
+    font-size: 13px; z-index: 2;
+  }
+  #btn-capture { position: relative; z-index: 2; margin-bottom: 36px; font-size: 18px; padding: 18px 40px; }
+
+  #screen-result { padding: 16px; overflow-y: auto; }
+  #result-canvas { max-width: 100%; max-height: 55vh; border-radius: 8px; }
+  .result-note { font-size: 13px; margin: 12px 0; opacity: 0.85; line-height: 1.6; }
+  .result-buttons { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  #send-status { font-size: 14px; margin-top: 10px; min-height: 20px; }
+  .success-panel {
+    margin-top: 16px; padding: 16px 20px; background: rgba(255,255,255,0.08);
+    border-radius: 14px; width: 100%; max-width: 320px;
+  }
+  .success-panel .code { font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #ffd166; }
+  .success-panel .progress { font-size: 15px; margin-top: 8px; }
+  .success-panel .complete { color: #7CFC9A; font-weight: bold; margin-top: 10px; font-size: 16px; }
+
+  #screen-error { font-size: 16px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- スタート画面 -->
+  <div id="screen-start" class="screen">
+    <div class="spot-title" id="start-spot-name">読み込み中…</div>
+    <div class="my-code">あなたの整理番号: <b id="my-code-text"></b><br>カードと交換する際に必要です。控えておいてください。</div>
+    <div class="desc">
+      この場所に到着したら、ボタンを押して位置情報を確認してください。<br>
+      条件を満たすとAR撮影画面が開きます。
+    </div>
+    <button id="btn-start">📍 現在地を確認してARを起動</button>
+  </div>
+
+  <!-- 確認中 -->
+  <div id="screen-checking" class="screen hidden">
+    <div class="spinner"></div>
+    <div>位置情報を確認中…</div>
+  </div>
+
+  <!-- 距離不足 -->
+  <div id="screen-distance" class="screen hidden">
+    <div class="spot-title" id="distance-spot-name"></div>
+    <div class="desc" id="distance-msg"></div>
+    <button id="btn-retry">もう一度確認する</button>
+  </div>
+
+  <!-- ARカメラ画面 -->
+  <div id="screen-ar" class="screen hidden">
+    <video id="camera" autoplay playsinline muted></video>
+    <img id="overlay-img" src="" alt="AR overlay">
+    <div id="watermark"></div>
+    <button id="btn-capture">📸 撮影する</button>
+  </div>
+
+  <!-- 撮影結果 -->
+  <div id="screen-result" class="screen hidden">
+    <canvas id="result-canvas"></canvas>
+    <div class="result-note">送信すると獲得スポット数が記録されます。<br>「画像を保存」で端末にも保存できます。</div>
+    <div class="result-buttons">
+      <button id="btn-send">📤 送信する</button>
+      <button id="btn-download" class="secondary">画像を保存</button>
+      <button id="btn-retake" class="secondary">撮り直す</button>
+    </div>
+    <div id="send-status"></div>
+    <div id="success-panel" class="success-panel hidden">
+      <div>整理番号</div>
+      <div class="code" id="success-code"></div>
+      <div class="progress" id="success-progress"></div>
+      <div class="complete hidden" id="success-complete">🎉 29ヶ所コンプリート！特典の対象です</div>
+    </div>
+  </div>
+
+  <!-- エラー -->
+  <div id="screen-error" class="screen hidden"></div>
+
+</div>
+
+<script>
+/* =========================================================
+   設定
+   ========================================================= */
+
+// Apps Scriptをウェブアプリとして公開した後のURLをここに貼り付けてください。
+// (例: "https://script.google.com/macros/s/XXXXXXXX/exec")
+var SUBMIT_ENDPOINT = "ここにApps ScriptウェブアプリのURLを貼り付け";
+
+// 全スポット数（コンプリート判定の表示にのみ使用。実際の判定はサーバー側のTOTAL_SPOTSが基準）
+var TOTAL_SPOTS = 29;
+
+/* =========================================================
+   スポット設定
+   ここに名所を追加してください。
+   id: URLの ?spot=ID で指定する値（半角英数字推奨）
+   name: 表示名
+   lat / lng: 現地の緯度経度（できるだけ正確な値に調整してください）
+   radius: この半径(m)以内でのみAR起動を許可
+   overlay: 表示するAR画像（透過PNG推奨）のパス
+   ========================================================= */
+var SPOTS = {
+  akashi_castle: {
+    name: "明石城",
+    lat: 34.6464,
+    lng: 134.9990,
+    radius: 100,
+    overlay: "assets/sample_overlay.png"
+  },
+  uonotana: {
+    name: "魚の棚商店街",
+    lat: 34.6428,
+    lng: 134.9944,
+    radius: 80,
+    overlay: "assets/sample_overlay.png"
+  },
+  akashi_bridge: {
+    name: "明石海峡大橋",
+    lat: 34.6195,
+    lng: 135.0008,
+    radius: 150,
+    overlay: "assets/sample_overlay.png"
+  }
+  // 29ヶ所になるまで、同じ書式で追加してください。
+};
+/* 注意: 上記の緯度経度はサンプルの目安値です。
+   実際の運用前に、現地でスマートフォンのGPSを使って
+   正確な値に必ず差し替えてください。 */
+
+// ---- 要素取得 ----
+var screens = ["screen-start", "screen-checking", "screen-distance", "screen-ar", "screen-result", "screen-error"];
+function showScreen(id) {
+  screens.forEach(function (s) {
+    document.getElementById(s).classList.add("hidden");
+  });
+  document.getElementById(id).classList.remove("hidden");
+}
+function showError(msg) {
+  document.getElementById("screen-error").textContent = msg;
+  showScreen("screen-error");
+}
+
+// ---- 参加者コード（端末ごとに発行し、localStorageに保持） ----
+function getParticipantCode() {
+  var KEY = "akashi_participant_code";
+  var code = localStorage.getItem(KEY);
+  if (!code) {
+    code = String(Math.floor(100000 + Math.random() * 900000)); // 6桁
+    localStorage.setItem(KEY, code);
+  }
+  return code;
+}
+var participantCode = getParticipantCode();
+document.getElementById("my-code-text").textContent = participantCode;
+
+// ---- スポット取得 ----
+var params = new URLSearchParams(window.location.search);
+var spotId = params.get("spot");
+var spot = SPOTS[spotId];
+
+if (!spot) {
+  showError("スポット情報が見つかりません。配布されたQRコード／URLが正しいかご確認ください。");
+} else {
+  document.getElementById("start-spot-name").textContent = spot.name;
+  document.getElementById("distance-spot-name").textContent = spot.name;
+}
+
+// ---- 距離計算（Haversine） ----
+function distanceMeters(lat1, lon1, lat2, lon2) {
+  var R = 6371000;
+  var toRad = function (x) { return (x * Math.PI) / 180; };
+  var dLat = toRad(lat2 - lat1);
+  var dLon = toRad(lon2 - lon1);
+  var a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// ---- 開始ボタン ----
+document.getElementById("btn-start").addEventListener("click", function () {
+  // iOS は方向センサーの利用にユーザー操作直後の許可リクエストが必要
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    DeviceOrientationEvent.requestPermission().catch(function () {});
+  }
+  checkLocation();
+});
+document.getElementById("btn-retry").addEventListener("click", checkLocation);
+
+function checkLocation() {
+  if (!spot) return;
+  showScreen("screen-checking");
+  if (!navigator.geolocation) {
+    showError("このブラウザは位置情報の取得に対応していません。最新のChromeまたはSafariをお使いください。");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    function (pos) {
+      var d = distanceMeters(pos.coords.latitude, pos.coords.longitude, spot.lat, spot.lng);
+      if (d <= spot.radius) {
+        startAR();
+      } else {
+        document.getElementById("distance-msg").textContent =
+          "現在地から約" + Math.round(d) + "m離れています。" +
+          spot.name + "の近く（半径" + spot.radius + "m以内）でお試しください。";
+        showScreen("screen-distance");
+      }
+    },
+    function () {
+      showError("位置情報を取得できませんでした。ブラウザの設定で位置情報の利用を許可してから、もう一度お試しください。");
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+}
+
+// ---- ARカメラ起動 ----
+var mediaStream = null;
+
+function startAR() {
+  showScreen("screen-ar");
+  document.getElementById("overlay-img").src = spot.overlay;
+  document.getElementById("watermark").textContent = spot.name;
+
+  navigator.mediaDevices
+    .getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1280 } },
+      audio: false
+    })
+    .then(function (stream) {
+      mediaStream = stream;
+      document.getElementById("camera").srcObject = stream;
+    })
+    .catch(function () {
+      showError("カメラを起動できませんでした。ブラウザの設定でカメラの利用を許可してから、もう一度お試しください。");
+    });
+}
+
+// ---- 端末の傾きでARキャラに簡易パララックス ----
+window.addEventListener("deviceorientation", function (e) {
+  var screenAr = document.getElementById("screen-ar");
+  if (screenAr.classList.contains("hidden")) return;
+  var img = document.getElementById("overlay-img");
+  var tiltX = (e.gamma || 0) * 0.6;
+  var tiltY = ((e.beta || 0) - 45) * 0.3;
+  img.style.transform = "translate(" + tiltX.toFixed(1) + "px, " + tiltY.toFixed(1) + "px)";
+});
+
+// ---- 撮影 ----
+var lastPos = null; // 撮影時のGPS座標（送信にも使用）
+var lastImageDataUrl = null;
+
+document.getElementById("btn-capture").addEventListener("click", capture);
+document.getElementById("btn-retake").addEventListener("click", function () {
+  document.getElementById("success-panel").classList.add("hidden");
+  document.getElementById("success-complete").classList.add("hidden");
+  document.getElementById("send-status").textContent = "";
+  showScreen("screen-ar");
+});
+
+function capture() {
+  var video = document.getElementById("camera");
+  var canvas = document.getElementById("result-canvas");
+  var w = video.videoWidth || 1280;
+  var h = video.videoHeight || 1280;
+  canvas.width = w;
+  canvas.height = h;
+  var ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, w, h);
+
+  var overlay = document.getElementById("overlay-img");
+  var overlayW = w * 0.5;
+  var overlayH = overlayW * (overlay.naturalHeight / overlay.naturalWidth);
+  var ox = (w - overlayW) / 2;
+  var oy = h - overlayH - h * 0.12;
+  ctx.drawImage(overlay, ox, oy, overlayW, overlayH);
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function (pos) { stamp(ctx, w, h, pos); },
+      function () { stamp(ctx, w, h, null); },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 5000 }
+    );
+  } else {
+    stamp(ctx, w, h, null);
+  }
+}
+
+function stamp(ctx, w, h, pos) {
+  lastPos = pos;
+  var barH = h * 0.12;
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(0, h - barH, w, barH);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = Math.round(w * 0.045) + "px sans-serif";
+  ctx.fillText(spot.name, w * 0.03, h - barH * 0.55);
+
+  var sub = new Date().toLocaleString("ja-JP");
+  if (pos) {
+    sub += "  GPS " + pos.coords.latitude.toFixed(5) + ", " + pos.coords.longitude.toFixed(5);
+  }
+  ctx.font = Math.round(w * 0.03) + "px sans-serif";
+  ctx.fillText(sub, w * 0.03, h - barH * 0.18);
+
+  // JPEGで圧縮（PNGは無圧縮で数MBになるため）
+  var canvas = document.getElementById("result-canvas");
+  lastImageDataUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+  document.getElementById("success-panel").classList.add("hidden");
+  document.getElementById("send-status").textContent = "";
+  showScreen("screen-result");
+}
+
+document.getElementById("btn-download").addEventListener("click", function () {
+  var link = document.createElement("a");
+  link.download = spot.name + "_AR証明.jpg";
+  link.href = lastImageDataUrl || document.getElementById("result-canvas").toDataURL("image/jpeg", 0.8);
+  link.click();
+});
+
+// ---- サーバーへ送信 ----
+document.getElementById("btn-send").addEventListener("click", sendToServer);
+
+function sendToServer() {
+  var statusEl = document.getElementById("send-status");
+  var sendBtn = document.getElementById("btn-send");
+
+  if (!SUBMIT_ENDPOINT || SUBMIT_ENDPOINT.indexOf("http") !== 0) {
+    statusEl.textContent = "送信先が設定されていません（運営にご確認ください）。画像の保存のみご利用いただけます。";
+    return;
+  }
+
+  sendBtn.disabled = true;
+  statusEl.textContent = "送信中…";
+
+  var payload = {
+    participantCode: participantCode,
+    spotId: spotId,
+    spotName: spot.name,
+    lat: lastPos ? lastPos.coords.latitude : null,
+    lng: lastPos ? lastPos.coords.longitude : null,
+    timestamp: new Date().toISOString(),
+    imageBase64: lastImageDataUrl
+  };
+
+  // 注意: Content-Typeを明示的に指定しない（text/plainのまま送ることで
+  // ブラウザのCORSプリフライトを回避し、Apps Script側で正しく受信できるようにしている）
+  fetch(SUBMIT_ENDPOINT, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  })
+    .then(function (res) { return res.json(); })
+    .then(function (data) {
+      sendBtn.disabled = false;
+      if (data.status !== "ok") {
+        statusEl.textContent = "送信に失敗しました: " + (data.message || "不明なエラー") + "（もう一度お試しください）";
+        return;
+      }
+      statusEl.textContent = "送信完了しました。";
+      document.getElementById("success-code").textContent = participantCode;
+      document.getElementById("success-progress").textContent =
+        "クリア済み " + data.clearCount + " / " + TOTAL_SPOTS + " ヶ所";
+      document.getElementById("success-complete").classList.toggle("hidden", !data.complete);
+      document.getElementById("success-panel").classList.remove("hidden");
+    })
+    .catch(function () {
+      sendBtn.disabled = false;
+      statusEl.textContent = "送信に失敗しました。電波の良い場所でもう一度お試しください（画像はまだ消えていません）。";
+    });
+}
+</script>
+</body>
+</html>
