@@ -114,8 +114,7 @@
     <canvas id="result-canvas"></canvas>
     <div class="result-note">送信すると獲得スポット数が記録されます。<br>「画像を保存」で端末にも保存できます。</div>
     <div class="result-buttons">
-      <button id="btn-send">📤 送信する</button>
-      <button id="btn-download" class="secondary">画像を保存</button>
+      <button id="btn-save-send">📤 保存して送信する</button>
       <button id="btn-retake" class="secondary">撮り直す</button>
     </div>
     <div id="send-status"></div>
@@ -373,7 +372,7 @@ function stamp(ctx, w, h, pos) {
   showScreen("screen-result");
 }
 
-document.getElementById("btn-download").addEventListener("click", async function () {
+async function saveImageToDevice() {
   var dataUrl = lastImageDataUrl || document.getElementById("result-canvas").toDataURL("image/jpeg", 0.8);
   var fileName = spot.name + "_AR証明.jpg";
 
@@ -397,14 +396,17 @@ document.getElementById("btn-download").addEventListener("click", async function
   link.download = fileName;
   link.href = dataUrl;
   link.click();
-});
+}
 
-// ---- サーバーへ送信 ----
-document.getElementById("btn-send").addEventListener("click", sendToServer);
+// ---- 保存＋送信(1ボタンで両方実行) ----
+document.getElementById("btn-save-send").addEventListener("click", function () {
+  saveImageToDevice(); // 共有シート/ダウンロードは並行して実行(失敗しても送信は続行)
+  sendToServer();
+});
 
 function sendToServer() {
   var statusEl = document.getElementById("send-status");
-  var sendBtn = document.getElementById("btn-send");
+  var sendBtn = document.getElementById("btn-save-send");
 
   if (!SUBMIT_ENDPOINT || SUBMIT_ENDPOINT.indexOf("http") !== 0) {
     statusEl.textContent = "送信先が設定されていません（運営にご確認ください）。画像の保存のみご利用いただけます。";
