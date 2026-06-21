@@ -373,10 +373,29 @@ function stamp(ctx, w, h, pos) {
   showScreen("screen-result");
 }
 
-document.getElementById("btn-download").addEventListener("click", function () {
+document.getElementById("btn-download").addEventListener("click", async function () {
+  var dataUrl = lastImageDataUrl || document.getElementById("result-canvas").toDataURL("image/jpeg", 0.8);
+  var fileName = spot.name + "_AR証明.jpg";
+
+  // iPhone(Safari)など: 共有シート経由で「画像を保存」できるようにする
+  if (navigator.canShare && navigator.share) {
+    try {
+      var res = await fetch(dataUrl);
+      var blob = await res.blob();
+      var file = new File([blob], fileName, { type: "image/jpeg" });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+    } catch (e) {
+      // 共有がキャンセル/失敗した場合は下のダウンロード方式にフォールバック
+    }
+  }
+
+  // デスクトップ・Android Chromeなど: 通常のダウンロード
   var link = document.createElement("a");
-  link.download = spot.name + "_AR証明.jpg";
-  link.href = lastImageDataUrl || document.getElementById("result-canvas").toDataURL("image/jpeg", 0.8);
+  link.download = fileName;
+  link.href = dataUrl;
   link.click();
 });
 
