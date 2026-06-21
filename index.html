@@ -46,10 +46,22 @@
 
   #screen-ar { padding: 0; justify-content: flex-end; }
   #camera { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #111; }
-  #overlay-img {
-    position: absolute; bottom: 12%; left: 25%; width: 50%;
-    pointer-events: none; filter: drop-shadow(0 8px 14px rgba(0,0,0,0.45));
+  #overlay-text {
+    position: absolute; bottom: 14%; left: 8%; width: 84%;
+    pointer-events: none; text-align: center;
     transition: transform 0.05s linear;
+  }
+  #overlay-name {
+    font-size: 28px; font-weight: bold; color: #fff;
+    -webkit-text-stroke: 2px rgba(0,0,0,0.85);
+    text-shadow: 0 0 6px rgba(0,0,0,0.8), 0 0 14px rgba(0,0,0,0.6);
+    margin-bottom: 8px; line-height: 1.3;
+  }
+  #overlay-desc {
+    font-size: 15px; color: #fff;
+    -webkit-text-stroke: 1px rgba(0,0,0,0.85);
+    text-shadow: 0 0 5px rgba(0,0,0,0.8), 0 0 12px rgba(0,0,0,0.6);
+    line-height: 1.5;
   }
   #watermark {
     position: absolute; top: 16px; left: 16px;
@@ -104,7 +116,10 @@
   <!-- ARカメラ画面 -->
   <div id="screen-ar" class="screen hidden">
     <video id="camera" autoplay playsinline muted></video>
-    <img id="overlay-img" src="" alt="AR overlay">
+    <div id="overlay-text">
+      <div id="overlay-name"></div>
+      <div id="overlay-desc"></div>
+    </div>
     <div id="watermark"></div>
     <button id="btn-capture">📸 撮影する</button>
   </div>
@@ -150,7 +165,7 @@ var TOTAL_SPOTS = 29;
    name: 表示名
    lat / lng: 現地の緯度経度（できるだけ正確な値に調整してください）
    radius: この半径(m)以内でのみAR起動を許可
-   overlay: 表示するAR画像（透過PNG推奨）のパス
+   description: AR画面・撮影画像に表示する説明文（未確定の場合は仮の文章でOK）
    ========================================================= */
 var SPOTS = {
   yamane_sake: {
@@ -158,21 +173,22 @@ var SPOTS = {
     lat: 34.65627,
     lng: 135.00217,
     radius: 80,
-    overlay: "assets/sample_overlay.png"
+    description: "（仮の説明文）地元で長く親しまれている酒店です。詳しい紹介文は確定後に差し替えてください。"
   },
   cherry_tei_ramen: {
     name: "男のらぁめん 神戸ちぇりー亭 明石魚住店",
     lat: 34.7010427,
     lng: 134.9105046,
     radius: 80,
-    overlay: "assets/sample_overlay.png"
+    description: "（仮の説明文）明石市魚住エリアのラーメン店です。詳しい紹介文は確定後に差し替えてください。"
   }
   // 29ヶ所になるまで、同じ書式で追加してください。
 };
 /* 注意: 山根酒店は現地での実機テストでGPSが正しく動くことを確認済みです。
    男のらぁめん 神戸ちぇりー亭は、Googleマップの検索結果から取得した座標です
    （現地での実機確認はまだ）。新しいスポットを追加する際は、マイマップに
-   実際にピンを登録したうえで、その座標をここに反映してください。 */
+   実際にピンを登録したうえで、その座標をここに反映してください。
+   descriptionは仮の文章です。スポットが確定したら正式な説明文に差し替えてください。 */
 
 // ---- 要素取得 ----
 var screens = ["screen-start", "screen-checking", "screen-distance", "screen-ar", "screen-result", "screen-error"];
@@ -266,7 +282,8 @@ var mediaStream = null;
 
 function startAR() {
   showScreen("screen-ar");
-  document.getElementById("overlay-img").src = spot.overlay;
+  document.getElementById("overlay-name").textContent = spot.name;
+  document.getElementById("overlay-desc").textContent = spot.description || "";
   document.getElementById("watermark").textContent = spot.name;
 
   navigator.mediaDevices
@@ -283,14 +300,14 @@ function startAR() {
     });
 }
 
-// ---- 端末の傾きでARキャラに簡易パララックス ----
+// ---- 端末の傾きで説明テキストに簡易パララックス ----
 window.addEventListener("deviceorientation", function (e) {
   var screenAr = document.getElementById("screen-ar");
   if (screenAr.classList.contains("hidden")) return;
-  var img = document.getElementById("overlay-img");
-  var tiltX = (e.gamma || 0) * 0.6;
-  var tiltY = ((e.beta || 0) - 45) * 0.3;
-  img.style.transform = "translate(" + tiltX.toFixed(1) + "px, " + tiltY.toFixed(1) + "px)";
+  var textEl = document.getElementById("overlay-text");
+  var tiltX = (e.gamma || 0) * 0.4;
+  var tiltY = ((e.beta || 0) - 45) * 0.2;
+  textEl.style.transform = "translate(" + tiltX.toFixed(1) + "px, " + tiltY.toFixed(1) + "px)";
 });
 
 // ---- 撮影 ----
@@ -305,6 +322,61 @@ document.getElementById("btn-retake").addEventListener("click", function () {
   showScreen("screen-ar");
 });
 
+// キャンバス上に、名所名＋説明文を縁取り付きの透過テキストとして描画する
+// (HTMLの#overlay-name/#overlay-descと同じ見た目をスクショ画像にも反映するため)
+function wrapCanvasText(ctx, text, maxWidth) {
+  var lines = [];
+  var line = "";
+  for (var i = 0; i < text.length; i++) {
+    var testLine = line + text[i];
+    if (ctx.measureText(testLine).width > maxWidth && line.length > 0) {
+      lines.push(line);
+      line = text[i];
+    } else {
+      line = testLine;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
+function drawOverlayText(ctx, w, h) {
+  var maxWidth = w * 0.84;
+  var cx = w / 2;
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.lineJoin = "round";
+
+  // 説明文を先に折り返して行数を計算し、名所名の位置を決める
+  var descSize = Math.round(w * 0.034);
+  ctx.font = descSize + "px sans-serif";
+  var descLines = spot.description ? wrapCanvasText(ctx, spot.description, maxWidth) : [];
+  var descLineHeight = descSize * 1.5;
+  var descBlockHeight = descLines.length * descLineHeight;
+
+  var nameSize = Math.round(w * 0.062);
+  var bottomMargin = h * 0.14;
+  var nameY = h - bottomMargin - descBlockHeight - nameSize * 0.3;
+
+  // 名所名（太字・大きめ）
+  ctx.font = "bold " + nameSize + "px sans-serif";
+  ctx.lineWidth = Math.max(3, nameSize * 0.09);
+  ctx.strokeStyle = "rgba(0,0,0,0.85)";
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeText(spot.name, cx, nameY);
+  ctx.fillText(spot.name, cx, nameY);
+
+  // 説明文（複数行）
+  ctx.font = descSize + "px sans-serif";
+  ctx.lineWidth = Math.max(2, descSize * 0.09);
+  descLines.forEach(function (line, idx) {
+    var ly = nameY + nameSize * 0.5 + (idx + 1) * descLineHeight;
+    ctx.strokeText(line, cx, ly);
+    ctx.fillText(line, cx, ly);
+  });
+}
+
 function capture() {
   var video = document.getElementById("camera");
   var canvas = document.getElementById("result-canvas");
@@ -315,12 +387,7 @@ function capture() {
   var ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0, w, h);
 
-  var overlay = document.getElementById("overlay-img");
-  var overlayW = w * 0.5;
-  var overlayH = overlayW * (overlay.naturalHeight / overlay.naturalWidth);
-  var ox = (w - overlayW) / 2;
-  var oy = h - overlayH - h * 0.12;
-  ctx.drawImage(overlay, ox, oy, overlayW, overlayH);
+  drawOverlayText(ctx, w, h);
 
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
