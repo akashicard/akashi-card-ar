@@ -153,27 +153,6 @@ var TOTAL_SPOTS = 29;
    overlay: 表示するAR画像（透過PNG推奨）のパス
    ========================================================= */
 var SPOTS = {
-  akashi_castle: {
-    name: "明石城",
-    lat: 34.6464,
-    lng: 134.9990,
-    radius: 100,
-    overlay: "assets/sample_overlay.png"
-  },
-  uonotana: {
-    name: "魚の棚商店街",
-    lat: 34.6428,
-    lng: 134.9944,
-    radius: 80,
-    overlay: "assets/sample_overlay.png"
-  },
-  akashi_bridge: {
-    name: "明石海峡大橋",
-    lat: 34.6195,
-    lng: 135.0008,
-    radius: 150,
-    overlay: "assets/sample_overlay.png"
-  },
   yamane_sake: {
     name: "山根酒店",
     lat: 34.65627,
@@ -190,9 +169,10 @@ var SPOTS = {
   }
   // 29ヶ所になるまで、同じ書式で追加してください。
 };
-/* 注意: 上記の緯度経度はサンプルの目安値です。
-   実際の運用前に、現地でスマートフォンのGPSを使って
-   正確な値に必ず差し替えてください。 */
+/* 注意: 山根酒店は現地での実機テストでGPSが正しく動くことを確認済みです。
+   男のらぁめん 神戸ちぇりー亭は、Googleマップの検索結果から取得した座標です
+   （現地での実機確認はまだ）。新しいスポットを追加する際は、マイマップに
+   実際にピンを登録したうえで、その座標をここに反映してください。 */
 
 // ---- 要素取得 ----
 var screens = ["screen-start", "screen-checking", "screen-distance", "screen-ar", "screen-result", "screen-error"];
